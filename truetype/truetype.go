@@ -201,12 +201,16 @@ type Font struct {
 	cmGlyphIDArray []uint8
 	charcodeToGID  map[uint8]uint32
 	hasShortCmap   bool
+	// support of cmap format 6
+	cmGlyphIDArrayUint16 []uint16
+	firstCode            uint16
 }
 
 func (f *Font) parseCmap() error {
 	const (
 		cmapFormat0         = 0
 		cmapFormat4         = 4
+		cmapFormat6         = 6
 		cmapFormat12        = 12
 		languageIndependent = 0
 	)
@@ -300,6 +304,17 @@ func (f *Font) parseCmap() error {
 			}
 			f.charcodeToGID = charcodeMap
 		}
+		return nil
+	case cmapFormat6:
+		firstCode := u16(f.cmap, offset+6)
+		entryCount := u16(f.cmap, offset+8)
+		glyphIDArray := make([]uint16, entryCount)
+		for i := 0; i < int(entryCount); i++ {
+			glyphIDArray[i] = u16(f.cmap, offset+10+2*i)
+		}
+		f.cmGlyphIDArrayUint16 = glyphIDArray
+		f.hasShortCmap = true
+		f.firstCode = firstCode
 		return nil
 	case cmapFormat12:
 		if u16(f.cmap, offset+2) != 0 {
@@ -452,6 +467,11 @@ func (f *Font) Index(x rune) Index {
 	c := uint32(x)
 	if len(f.cmGlyphIDArray) > int(c) {
 		val := f.cmGlyphIDArray[c]
+		return Index(val)
+	}
+
+	if len(f.cmGlyphIDArrayUint16)+int(f.firstCode) > int(c) && int(f.firstCode) <= int(c) {
+		val := f.cmGlyphIDArrayUint16[c-uint32(f.firstCode)]
 		return Index(val)
 	}
 
@@ -627,6 +647,8 @@ func parse(ttf []byte, offset int) (font *Font, err error) {
 	magic, offset := u32(ttf, offset), offset+4
 	switch magic {
 	case 0x00010000:
+		// No-op.
+	case 0x74727565:
 		// No-op.
 	case 0x74746366: // "ttcf" as a big-endian uint32.
 		if originalOffset != 0 {
