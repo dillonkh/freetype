@@ -207,7 +207,7 @@ type Font struct {
 	firstCode            uint16
 
 	// font without cmap can still be used with identity encoding
-	hasNoCmap bool
+	hasCmap bool
 }
 
 func (f *Font) parseCmap() error {
@@ -219,10 +219,11 @@ func (f *Font) parseCmap() error {
 		languageIndependent = 0
 	)
 
+	f.hasCmap = false
+
 	offset, _, err := parseSubtables(f.cmap, "cmap", 4, 8, nil)
 	if err != nil {
 		if strings.Contains(err.Error(), "cmap too short") {
-			f.hasNoCmap = true
 			return nil
 		}
 		return err
@@ -241,6 +242,7 @@ func (f *Font) parseCmap() error {
 		}
 		f.cmGlyphIDArray = glyphIDArray
 		f.hasShortCmap = true
+		f.hasCmap = true
 		return nil
 	case cmapFormat4:
 		language := u16(f.cmap, offset+4)
@@ -312,6 +314,7 @@ func (f *Font) parseCmap() error {
 			}
 			f.charcodeToGID = charcodeMap
 		}
+		f.hasCmap = true
 		return nil
 	case cmapFormat6:
 		firstCode := u16(f.cmap, offset+6)
@@ -323,6 +326,7 @@ func (f *Font) parseCmap() error {
 		f.cmGlyphIDArrayUint16 = glyphIDArray
 		f.hasShortCmap = true
 		f.firstCode = firstCode
+		f.hasCmap = true
 		return nil
 	case cmapFormat12:
 		if u16(f.cmap, offset+2) != 0 {
@@ -345,6 +349,7 @@ func (f *Font) parseCmap() error {
 			f.cm[i].delta = u32(f.cmap, offset+8) - f.cm[i].start
 			offset += 12
 		}
+		f.hasCmap = true
 		return nil
 	}
 	return UnsupportedError(fmt.Sprintf("cmap format: %d", cmapFormat))
@@ -473,7 +478,7 @@ func (f *Font) FUnitsPerEm() int32 {
 // Index returns a Font's index for the given rune.
 func (f *Font) Index(x rune) Index {
 	c := uint32(x)
-	if f.hasNoCmap {
+	if !f.hasCmap {
 		return Index(c)
 	}
 	if len(f.cmGlyphIDArray) > int(c) {
@@ -544,9 +549,9 @@ func (f *Font) HasShortCmap() bool {
 	return f.hasShortCmap
 }
 
-// HasNoCmap returns true if font doesn't have cmap. This may be acceptable for Identity-H or Identity-V encoded fonts.
-func (f *Font) HasNoCmap() bool {
-	return f.hasNoCmap
+// HasCmap returns true if font has a cmap. Still the font without cmap may be acceptable for Identity-H or Identity-V encoded fonts.
+func (f *Font) HasCmap() bool {
+	return f.hasCmap
 }
 
 func printable(r uint16) byte {
