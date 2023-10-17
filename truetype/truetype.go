@@ -19,6 +19,7 @@ package truetype // import "github.com/golang/freetype/truetype"
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/image/math/fixed"
 )
@@ -204,6 +205,9 @@ type Font struct {
 	// support of cmap format 6
 	cmGlyphIDArrayUint16 []uint16
 	firstCode            uint16
+
+	// font without cmap can still be used with identity encoding
+	hasCmap bool
 }
 
 func (f *Font) parseCmap() error {
@@ -215,8 +219,13 @@ func (f *Font) parseCmap() error {
 		languageIndependent = 0
 	)
 
+	f.hasCmap = false
+
 	offset, _, err := parseSubtables(f.cmap, "cmap", 4, 8, nil)
 	if err != nil {
+		if strings.Contains(err.Error(), "cmap too short") {
+			return nil
+		}
 		return err
 	}
 	offset = int(u32(f.cmap, offset+4))
@@ -233,6 +242,7 @@ func (f *Font) parseCmap() error {
 		}
 		f.cmGlyphIDArray = glyphIDArray
 		f.hasShortCmap = true
+		f.hasCmap = true
 		return nil
 	case cmapFormat4:
 		language := u16(f.cmap, offset+4)
@@ -304,6 +314,7 @@ func (f *Font) parseCmap() error {
 			}
 			f.charcodeToGID = charcodeMap
 		}
+		f.hasCmap = true
 		return nil
 	case cmapFormat6:
 		firstCode := u16(f.cmap, offset+6)
@@ -315,6 +326,7 @@ func (f *Font) parseCmap() error {
 		f.cmGlyphIDArrayUint16 = glyphIDArray
 		f.hasShortCmap = true
 		f.firstCode = firstCode
+		f.hasCmap = true
 		return nil
 	case cmapFormat12:
 		if u16(f.cmap, offset+2) != 0 {
@@ -337,6 +349,7 @@ func (f *Font) parseCmap() error {
 			f.cm[i].delta = u32(f.cmap, offset+8) - f.cm[i].start
 			offset += 12
 		}
+		f.hasCmap = true
 		return nil
 	}
 	return UnsupportedError(fmt.Sprintf("cmap format: %d", cmapFormat))
@@ -363,13 +376,13 @@ func (f *Font) parseHead() error {
 }
 
 func (f *Font) parseHhea() error {
-	if len(f.hhea) != 36 {
+	if len(f.hhea) < 36 {
 		return FormatError(fmt.Sprintf("bad hhea length: %d", len(f.hhea)))
 	}
 	f.ascent = int32(int16(u16(f.hhea, 4)))
 	f.descent = int32(int16(u16(f.hhea, 6)))
 	f.nHMetric = int(u16(f.hhea, 34))
-	if 4*f.nHMetric+2*(f.nGlyph-f.nHMetric) != len(f.hmtx) {
+	if 4*f.nHMetric+2*(f.nGlyph-f.nHMetric) < len(f.hmtx) {
 		return FormatError(fmt.Sprintf("bad hmtx length: %d", len(f.hmtx)))
 	}
 	return nil
@@ -465,6 +478,9 @@ func (f *Font) FUnitsPerEm() int32 {
 // Index returns a Font's index for the given rune.
 func (f *Font) Index(x rune) Index {
 	c := uint32(x)
+	if !f.hasCmap {
+		return Index(c)
+	}
 	if len(f.cmGlyphIDArray) > int(c) {
 		val := f.cmGlyphIDArray[c]
 		return Index(val)
@@ -531,6 +547,11 @@ func (f *Font) Name(id NameID) string {
 // HasShortCmap returns true if font use simple encoding.
 func (f *Font) HasShortCmap() bool {
 	return f.hasShortCmap
+}
+
+// HasCmap returns true if font has a cmap. Still the font without cmap may be acceptable for Identity-H or Identity-V encoded fonts.
+func (f *Font) HasCmap() bool {
+	return f.hasCmap
 }
 
 func printable(r uint16) byte {
