@@ -312,6 +312,9 @@ func (f *Font) parseCmap() error {
 					}
 				}
 			}
+			if len(charcodeMap) < 1 {
+				return FormatError("no charcode map or cmap indexes")
+			}
 			f.charcodeToGID = charcodeMap
 		}
 		f.hasCmap = true
