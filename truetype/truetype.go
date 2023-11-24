@@ -308,7 +308,10 @@ func (f *Font) parseCmap() error {
 							return FormatError("out of bounds")
 						}
 						b := byte(c)
-						charcodeMap[b] = gid
+						if _, has := charcodeMap[b]; !has {
+							// Avoid overwrite, if get same twice, use the earlier entry.
+							charcodeMap[b] = gid
+						}
 					}
 				}
 			}
@@ -494,7 +497,7 @@ func (f *Font) Index(x rune) Index {
 		return Index(val)
 	}
 
-	if len(f.charcodeToGID) > 0 {
+	if len(f.charcodeToGID) > int(c) {
 		val := f.charcodeToGID[uint8(c)]
 		return Index(val)
 	}
