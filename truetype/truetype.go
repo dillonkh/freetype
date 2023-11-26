@@ -497,7 +497,8 @@ func (f *Font) Index(x rune) Index {
 		return Index(val)
 	}
 
-	if len(f.charcodeToGID) > int(c) {
+	if len(f.charcodeToGID) > 0 && c < 256 {
+		// charcodeToGID is not empty and c is in 0..255 uint8 range
 		val := f.charcodeToGID[uint8(c)]
 		return Index(val)
 	}
